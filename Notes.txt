@@ -1,0 +1,287 @@
+# (c) J~Net 2026
+
+# Raspberry Pi 5 Fan Diagnostics - Script Notes
+
+This folder contains scripts used to investigate why the Raspberry Pi 5 cooling fan was not spinning correctly under Ubuntu.
+
+The scripts inspect Raspberry Pi firmware, kernel devices, temperature sensors, cooling devices and PWM fan controls.
+
+## Scripts
+
+### 1. start.sh
+
+Runs the initial Raspberry Pi firmware and device diagnostic checks.
+
+- Checks whether `/dev/vcio` and `/dev/vchiq` exist.
+- Lists loaded kernel modules related to Raspberry Pi hardware.
+- Looks for firmware, mailbox and related device-tree entries.
+- Searches kernel messages for VCHIQ, VCIO, mailbox and firmware information.
+
+**Purpose:** Establish whether the Raspberry Pi firmware and relevant kernel interfaces are detected by Ubuntu.
+
+### 2. check.sh
+
+Checks VideoCore device registration and available temperature sensors.
+
+- Searches `/proc/devices` for VideoCore character-device registration.
+- Displays details and device numbers for `/dev/vcio`.
+- Reads temperatures from `/sys/class/thermal`.
+- Lists available hardware-monitor devices and fan readings.
+
+**Purpose:** Investigate the `vcgencmd` `/dev/vcio` error and determine which thermal and hardware-monitoring interfaces are available.
+
+### 3. check2.sh
+
+Checks whether Raspberry Pi 5 cooling-fan support is exposed to the operating system.
+
+- Reads the CPU temperature.
+- Searches `/boot/firmware/config.txt` for fan parameters and device-tree overlays.
+- Searches the live device tree for fan-related entries.
+- Checks fan-related hwmon files, including fan and PWM readings.
+- Lists registered thermal cooling devices.
+
+**Purpose:** Determine whether the Pi 5 cooling-fan controller or cooling-fan device-tree support is present and enabled.
+
+### 4. check3.sh
+
+Checks whether the cooling-fan device is registered.
+
+- Searches the device tree for cooling-fan entries.
+- Lists thermal cooling devices and their types.
+- Reads the CPU temperature.
+
+**Purpose:** Verify that the `pwm-fan` cooling device is registered after enabling cooling-fan support.
+
+### 5. check4.sh
+
+Performs detailed fan-controller inspection.
+
+- Reads the current and maximum cooling states.
+- Lists RP1 PWM controller information.
+- Reads fan RPM from hwmon.
+- Searches the live device tree for fan-related entries.
+
+**Purpose:** Inspect the fan driver, PWM controller, cooling levels and tachometer readings.
+
+### 6. check5.sh
+
+Tests the maximum thermal cooling state temporarily.
+
+- Saves the original cooling state.
+- Requests cooling state 4 (maximum).
+- Waits eight seconds.
+- Reports the cooling state and fan RPM.
+- Restores the original cooling state automatically.
+
+**Purpose:** Test whether the thermal cooling-device interface responds to a maximum cooling request.
+
+### 7. check6.sh
+
+Performs further fan hardware and device-tree inspection.
+
+- Resolves the cooling-device path.
+- Reads the current and maximum cooling states.
+- Lists hwmon values, including `fan1_input`, `pwm1` and `pwm1_enable`.
+- Displays cooling-fan device-tree properties.
+- Searches kernel messages for fan and PWM driver information.
+
+**Purpose:** Confirm that the `pwm-fan` driver and RP1 PWM hardware are loaded and inspect the configured cooling levels.
+
+### 8. check7.sh
+
+Performs a temporary direct PWM fan test.
+
+- Saves the original PWM value.
+- Requests PWM 255 (maximum).
+- Waits eight seconds.
+- Reports PWM, RPM and cooling state.
+- Restores the original PWM value automatically.
+
+**Purpose:** Test whether the physical fan responds to a direct maximum-PWM request.
+
+During troubleshooting, the fan physically spun when maximum PWM was requested. This confirmed that the fan could operate when commanded directly.
+
+---
+
+## Important Troubleshooting Findings
+
+The following findings were established during testing:
+
+- Hardware: Raspberry Pi 5 Model B Rev 1.1.
+- Operating system: Ubuntu.
+- Raspberry Pi firmware was detected.
+- RP1 firmware was detected.
+- CPU temperature readings were available through Linux thermal sensors.
+- The `pwm-fan` cooling device was registered.
+- The RP1 PWM controller was detected.
+- The live device tree contained `/sys/firmware/devicetree/base/cooling_fan`.
+- The fan exposed hwmon controls including `pwm1`, `pwm1_enable` and `fan1_input`.
+- The initial fan RPM reading was 0.
+- The fan physically spun during the direct maximum-PWM test.
+- The cooling controller exposed four cooling states, numbered 0 to 4.
+
+### Important VCIO information
+
+`/dev/vcio` existed but reported device numbers 10:102.
+
+`/dev/vchiq` was absent.
+
+The absence of `/dev/vchiq` alone does not establish a fault on a Raspberry Pi 5.
+
+Do not manually create device nodes as a workaround. The Linux RP1 PWM and `pwm-fan` interfaces are used for the fan controller.
+
+---
+
+## Permanent Maximum Fan Speed - 24/7
+
+The Raspberry Pi 5 fan can be configured through the firmware configuration file:
+
+`/boot/firmware/config.txt`
+
+The following configuration requests maximum fan speed continuously, regardless of normal CPU temperature.
+
+### Step 1 - Back up the configuration
+
+Always create a backup before editing the boot configuration.
+
+Run:
+
+```bash
+sudo cp -a /boot/firmware/config.txt /boot/firmware/config.txt.backup
+```
+
+If the backup already exists, choose another backup filename to avoid overwriting it.
+
+### Step 2 - Open the configuration
+
+Use Gedit:
+
+```bash
+sudo gedit /boot/firmware/config.txt
+```
+
+### Step 3 - Enable the cooling fan
+
+Ensure this setting exists:
+
+```ini
+dtparam=cooling_fan=on
+```
+
+### Step 4 - Configure permanent maximum speed
+
+Add the following settings underneath the cooling-fan setting:
+
+```ini
+# (c) J~Net 2026 - Raspberry Pi 5 Permanent 100% Fan Speed
+
+dtparam=fan_temp0=1000,fan_temp0_hyst=0,fan_temp0_speed=255
+dtparam=fan_temp1=2000,fan_temp1_hyst=0,fan_temp1_speed=255
+dtparam=fan_temp2=3000,fan_temp2_hyst=0,fan_temp2_speed=255
+dtparam=fan_temp3=4000,fan_temp3_hyst=0,fan_temp3_speed=255
+```
+
+These settings configure all four fan temperature thresholds to request PWM speed 255 (maximum).
+
+The fan is therefore intended to remain at maximum speed, including when the Raspberry Pi is idle.
+
+### Step 5 - Save and reboot
+
+Save the configuration file and reboot:
+
+```bash
+sudo reboot
+```
+
+### Step 6 - Verify fan operation
+
+After reboot, run:
+
+```bash
+# (c) J~Net 2026
+
+echo "=== FAN COOLING STATE ==="
+cat /sys/class/thermal/cooling_device1/cur_state
+cat /sys/class/thermal/cooling_device1/max_state
+
+echo
+echo "=== FAN PWM ==="
+cat /sys/class/hwmon/hwmon3/pwm1
+
+echo
+echo "=== FAN RPM ==="
+cat /sys/class/hwmon/hwmon3/fan1_input
+
+echo
+echo "=== CPU TEMPERATURE ==="
+awk '{printf "%.2f°C\n",$1/1000}' /sys/class/thermal/thermal_zone0/temp
+```
+
+Expected readings:
+
+| Reading | Expected |
+|---|---|
+| Cooling state | 4 |
+| Maximum state | 4 |
+| PWM | 255 |
+| Fan RPM | Greater than 0 |
+| Fan operation | Continuous |
+
+**Note:** Linux device numbering can change after reboot. If `hwmon3` is no longer the fan device, identify the correct hwmon directory using:
+
+```bash
+for d in /sys/class/hwmon/hwmon*; do
+    [ -f "$d/name" ] && echo "$d: $(cat "$d/name")"
+done
+```
+
+---
+
+## Restoring Automatic Fan Control
+
+If you no longer want the fan running at maximum speed:
+
+1. Open the configuration:
+
+   ```bash
+   sudo gedit /boot/firmware/config.txt
+   ```
+
+2. Remove the four custom `fan_temp` lines.
+
+3. Keep:
+
+   ```ini
+   dtparam=cooling_fan=on
+   ```
+
+4. Save the file and reboot:
+
+   ```bash
+   sudo reboot
+   ```
+
+The normal automatic temperature-based fan curve will then be used.
+
+---
+
+## Important Warnings
+
+- Running the fan at 100% continuously increases noise and mechanical wear.
+- Keep the fan unobstructed.
+- Ensure the fan connector is securely connected.
+- Never connect or disconnect the fan while the Raspberry Pi is powered.
+- Always back up `config.txt` before making changes.
+- The fan configuration controls the requested speed; always verify actual RPM after reboot.
+- If the fan stops unexpectedly, investigate the fan, connector, power supply and firmware configuration.
+
+These scripts are primarily diagnostic tools. They do not permanently change the fan configuration except for the temporary tests performed by `check5.sh` and `check7.sh`.
+
+The script descriptions are based on the commands and outputs observed during this troubleshooting session. If any script has subsequently been edited, its actual behaviour may differ from these notes.
+
+---
+
+**J~Net - Raspberry Pi 5 Fan Diagnostics**
+
+(c) J~Net 2026
+
