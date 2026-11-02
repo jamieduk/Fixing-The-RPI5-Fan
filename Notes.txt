@@ -2,6 +2,9 @@
 
 # Raspberry Pi 5 Fan Diagnostics - Script Notes
 
+https://github.com/jamieduk/Fixing-The-RPI5-Fan
+
+
 This folder contains scripts used to investigate why the Raspberry Pi 5 cooling fan was not spinning correctly under Ubuntu.
 
 The scripts inspect Raspberry Pi firmware, kernel devices, temperature sensors, cooling devices and PWM fan controls.
